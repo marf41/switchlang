@@ -3,6 +3,7 @@ enum parser_mode_t
     NONE,
     NUMBER,
     HASH,
+    STRING,
     RETURN,
 };
 
@@ -60,6 +61,10 @@ enum __attribute__((__packed__)) parser_word_t
     WORD_MEMORY_MIN,
     WORD_MEMORY_MAX,
     WORD_WORDS_LIST,
+    WORD_STRING,
+    WORD_STRING_END,
+    WORD_EMIT,
+    WORD_NEWLINE,
     WORD_END_OF_LIST_OVER
 };
 

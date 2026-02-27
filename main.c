@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-// TODO: min_memory, max_memory, types, strings, wait, stop, multiple parsers
+// TODO: types, strings, wait, stop, multiple parsers
 
 #ifndef MAX_PROG
 #define MAX_PROG 255
@@ -455,6 +455,24 @@ void word_decrement(struct parser_t *parser)
     parser->stack[parser->sc - 1]--;
 }
 
+void word_string(struct parser_t *parser)
+{
+    for (uint8_t i = 0; i < parser->prog[parser->pc].len; i++)
+    {
+        printf("%c", parser->prog[parser->pc].v.op[i]);
+    }
+}
+
+void word_emit(struct parser_t *parser)
+{
+    printf("%c", (char)(pop(parser) & 0x7F));
+}
+
+void word_newline(struct parser_t *parser)
+{
+    printf("\n");
+}
+
 void word_if(struct parser_t *parser)
 {
     stack_t temp = pop(parser);
@@ -587,7 +605,7 @@ void parse_debug(struct parser_t *parser)
     printf("Debug level: %d\n", parser->debug);
 }
 
-void parser_words_list(struct parser_t *parser)
+void parse_words_list(struct parser_t *parser)
 {
     for (int i = 1; i <= 4; i++)
     {
@@ -599,6 +617,16 @@ void parser_words_list(struct parser_t *parser)
         }
     }
     printf("\n");
+}
+
+void parse_string_end(struct parser_t *parser)
+{
+    add_word(parser, WORD_STRING_END);
+}
+
+void parse_string_begin(struct parser_t *parser)
+{
+    parser->mode = STRING;
 }
 
 #pragma endregion
@@ -719,6 +747,7 @@ struct word_t words1[] = {
     {108, 1, '=', WORD_EQUAL, "=", word_equal, ANY, WORD_TEST("2 2 =", "1")},
     {109, 1, '>', WORD_GREATER, ">", word_greater, ANY, WORD_TEST("3 2 > 2 2 >", "1 0")},
     {110, 1, '<', WORD_LESS, "<", word_less, ANY, WORD_TEST("2 3 < 2 2 <", "1 0")},
+    {111, 1, '"', WORD_STRING_END, "\"", parse_string_end, ANY},
     {-1, 0, 0, WORD_END, "EOF", NULL},
 };
 
@@ -735,6 +764,8 @@ struct word_t words2[] = {
     {210, 2, HASH2('1', '+'), WORD_INCREMENT, "1+", word_increment, ANY, WORD_TEST("1 1+", "2")},
     {211, 2, HASH2('1', '-'), WORD_DECREMENT, "1-", word_decrement, ANY, WORD_TEST("2 1-", "1")},
     {212, 2, HASH2('p', 'c'), WORD_PC, "pc", parse_pc, ANY},
+    {213, 2, HASH2('.', '"'), WORD_STRING, ".\"", parse_string_begin, SOLO},
+    {214, 2, HASH2('c', 'r'), WORD_NEWLINE, "cr", word_newline, ANY},
     {-1, 0, 0, WORD_END, "EOF", NULL},
 };
 
@@ -767,7 +798,8 @@ struct word_t words4[] = {
     {410, 4, HASH4('s', 'o', 'l', 'o'), WORD_SOLO, "solo", parse_solo},
     {411, 4, HASH4('m', 'm', 'i', 'n'), WORD_MEMORY_MIN, "mmin", word_memory_min, ANY},
     {412, 4, HASH4('m', 'm', 'a', 'x'), WORD_MEMORY_MAX, "mmax", word_memory_max, ANY},
-    {413, 4, HASH4('w', 'o', 'r', 'd'), WORD_WORDS_LIST, "word", parser_words_list, ANY},
+    {413, 4, HASH4('w', 'o', 'r', 'd'), WORD_WORDS_LIST, "word", parse_words_list, ANY},
+    {414, 4, HASH4('e', 'm', 'i', 't'), WORD_EMIT, "emit", word_emit, ANY},
 #ifdef INCLUDE_WORD_TESTS
     {499, 4, HASH4('t', 'e', 's', 't'), WORD_TEST, "test", word_test, ANY, WORD_HIDE},
 #endif
@@ -829,6 +861,10 @@ void (*word_table[])(struct parser_t *) = {
     [WORD_MEMORY_MIN] = word_memory_min,
     [WORD_MEMORY_MAX] = word_memory_max,
     [WORD_WORDS_LIST] = word_nop,
+    [WORD_STRING] = word_string,
+    [WORD_STRING_END] = word_nop,
+    [WORD_EMIT] = word_emit,
+    [WORD_NEWLINE] = word_newline,
     [WORD_END_OF_LIST_OVER] = word_nop,
 };
 
@@ -931,8 +967,6 @@ void show_program(struct parser_t *parser)
 
 #pragma endregion
 
-#pragma region parser
-
 enum parser_mode_t hash(struct parser_t *parser, size_t len, char *word)
 {
     if (len == 0)
@@ -957,6 +991,11 @@ enum parser_mode_t hash(struct parser_t *parser, size_t len, char *word)
         // printf("%d vs %d: %d vs %d\n", len, words[wc][id].len, hash, words[wc][id].hash);
         if (words[wc][id].info.len == len && words[wc][id].info.hash == hash)
         {
+            if (words[wc][id].func == NULL)
+            {
+                printf("ERROR: word %s has no function\n", words[wc][id].name);
+                return NONE;
+            }
             DBG(2, "%d: %s\n", words[wc][id].info.id, words[wc][id].name);
             // words[wc][id].func(parser);
             if (words[wc][id].func != word_table[words[wc][id].word])
@@ -999,6 +1038,30 @@ void parse(struct parser_t *parser, char *buf)
 
     while (loop)
     {
+        if (parser->mode == STRING)
+        {
+            while (buf[bc] && buf[bc] != '"')
+            {
+                word[len++] = buf[bc++];
+            }
+            if (len > 0)
+            {
+                uint8_t n = 0;
+                while (n < len)
+                {
+                    uint8_t pc = add_word(parser, WORD_STRING);
+                    parser->prog[pc].len = 0;
+                    while (parser->prog[pc].len < 4 && n < len && word[n])
+                    {
+                        // if end of input error
+                        parser->prog[pc].v.op[parser->prog[pc].len++] = word[n++];
+                    }
+                }
+                add_word(parser, WORD_STRING_END);
+            }
+            len = 0;
+            parser->mode = NONE;
+        }
         word[len++] = buf[bc];
         // printf("'%c' '%c' %d %d\n", buf[bc], word[len], parser->pc, len);
         switch (buf[bc])
@@ -1116,8 +1179,6 @@ void parse(struct parser_t *parser, char *buf)
         exit(1);
     }
 }
-
-#pragma endregion
 
 void parser_exec(struct parser_t *parser)
 {
