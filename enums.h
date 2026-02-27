@@ -65,6 +65,8 @@ enum __attribute__((__packed__)) parser_word_t
     WORD_STRING_END,
     WORD_EMIT,
     WORD_NEWLINE,
+    WORD_EXECUTE,
+    WORD_RETURN,
     WORD_END_OF_LIST_OVER
 };
 

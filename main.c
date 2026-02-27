@@ -515,6 +515,11 @@ void word_define_end(struct parser_t *parser)
     set_pc(parser, parser->ret[--parser->rc]);
 }
 
+void word_return(struct parser_t *parser)
+{
+    set_pc(parser, parser->ret[--parser->rc]);
+}
+
 void word_call(struct parser_t *parser)
 {
     if (parser->rc >= 16)
@@ -524,6 +529,18 @@ void word_call(struct parser_t *parser)
     }
     parser->ret[parser->rc++] = parser->pc + 1;
     uint8_t addr = PC_DATA(parser->sub);
+    set_pc(parser, addr);
+}
+
+void word_execute(struct parser_t *parser)
+{
+    if (parser->rc >= 16)
+    {
+        printf("\nError: return stack overflow\n");
+        return;
+    }
+    parser->ret[parser->rc++] = parser->pc + 1;
+    uint8_t addr = pop(parser);
     set_pc(parser, addr);
 }
 
@@ -782,6 +799,7 @@ struct word_t words3[] = {
     {310, 3, HASH3('s', 'e', 't'), WORD_SET, "set", word_set, ANY},
     {311, 3, HASH3('g', 'e', 't'), WORD_GET, "get", word_get, ANY, WORD_TEST("1 99 set 99 get", "1")},
     {312, 3, HASH3('c', 'l', 'k'), WORD_CLOCK, "clk", word_clock, ANY},
+    {313, 3, HASH3('r', 'e', 't'), WORD_RETURN, "Ret", word_return, ANY},
     {-1, 0, 0, WORD_END, "EOF", NULL},
 };
 
@@ -800,6 +818,7 @@ struct word_t words4[] = {
     {412, 4, HASH4('m', 'm', 'a', 'x'), WORD_MEMORY_MAX, "mmax", word_memory_max, ANY},
     {413, 4, HASH4('w', 'o', 'r', 'd'), WORD_WORDS_LIST, "word", parse_words_list, ANY},
     {414, 4, HASH4('e', 'm', 'i', 't'), WORD_EMIT, "emit", word_emit, ANY},
+    {415, 4, HASH4('e', 'x', 'e', 'c'), WORD_EXECUTE, "exec", word_execute, ANY},
 #ifdef INCLUDE_WORD_TESTS
     {499, 4, HASH4('t', 'e', 's', 't'), WORD_TEST, "test", word_test, ANY, WORD_HIDE},
 #endif
@@ -865,6 +884,8 @@ void (*word_table[])(struct parser_t *) = {
     [WORD_STRING_END] = word_nop,
     [WORD_EMIT] = word_emit,
     [WORD_NEWLINE] = word_newline,
+    [WORD_EXECUTE] = word_execute,
+    [WORD_RETURN] = word_return,
     [WORD_END_OF_LIST_OVER] = word_nop,
 };
 
